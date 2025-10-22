@@ -6,7 +6,7 @@
 
 **RASTP** (Representation-Aware Semantic Token Pruning) is a **training-efficient strategy** for generative recommendation systems that use Semantic Identifiers (SIDs). It dynamically prunes less informative SID tokens during training to significantly reduce computational overhead while maintaining or even slightly improving recommendation performance.
 
-Built upon the [GRID](https://github.com/snap-research/GRID) framework, RASTP introduces a lightweight, plug-and-play module that evaluates token importance based on **semantic saliency** (representation magnitude) and **attention centrality** (cumulative attention scores).
+RASTP introduces a lightweight, plug-and-play module that evaluates token importance based on **semantic saliency** (representation magnitude) and **attention centrality** (cumulative attention scores).
 
 ## 🚀 Overview
 
@@ -18,7 +18,7 @@ RASTP addresses the key bottleneck in SID-based generative recommendation: **lon
   ```
   Importance = (Cumulative Attention Score) × (L1 Norm of Token Representation)
   ```
-- **Pruning Strategy**: Retains only the top-*k* most informative tokens (e.g., top 2/3) based on importance scores.
+- **Pruning Strategy**: Retains only the top-*k* most informative tokens (e.g., top 1/3) based on importance scores.
 - **Plug-and-Play**: Integrated into the Transformer encoder, requiring minimal code changes and incurring negligible overhead.
 
 ### Key Benefits
@@ -99,3 +99,5 @@ On Amazon datasets (Beauty, Sports, Toys), RASTP achieves:
 - Built on [GRID](https://github.com/snap-research/GRID) by Snap Research
 - Powered by [PyTorch](https://pytorch.org/), [PyTorch Lightning](https://lightning.ai/), and [Hydra](https://hydra.cc/)
 - Inspired by industrial needs for daily retraining of large-scale recommendation systems
+
+This repository is under BSD 3-Clause License. Many codes are based on GRID with it's License.
