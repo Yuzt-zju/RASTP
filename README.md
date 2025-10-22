@@ -100,4 +100,6 @@ On Amazon datasets (Beauty, Sports, Toys), RASTP achieves:
 - Powered by [PyTorch](https://pytorch.org/), [PyTorch Lightning](https://lightning.ai/), and [Hydra](https://hydra.cc/)
 - Inspired by industrial needs for daily retraining of large-scale recommendation systems
 
-This repository is under BSD 3-Clause License. Many codes are based on GRID with it's License.
+## 🔐 License
+- Code authored by Tianyu Zhan: [BSD 3-Clause License](./LICENSE.md)
+- GRID code from Snap Inc.: [Non-Commercial Research License](./LICENSE_grid.md)
