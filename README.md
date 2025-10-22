@@ -87,13 +87,14 @@ python -m src.train experiment=tiger_train_flat \
 
 ## 📊 Results
 
-On Amazon datasets (Beauty, Sports, Toys), RASTP achieves:
+On Amazon datasets (Beauty, Sports, Toys), RASTP achieves 1.36x speedsup and performance:
 
-| Metric | Without RASTP | With RASTP | Δ |
-|--------|---------------|------------|----|
-| Training Time | 100% | **73.3%** | **↓26.7%** |
-| Recall@10 (Beauty) | 0.0645 | **0.0656** | ↑ |
-| NDCG@10 (Toys) | 0.0287 | **0.0289** | ↑ |
+| Metric     | Beauty (×) | Beauty (✓) | Sports (×) | Sports (✓) | Toys (×) | Toys (✓) |
+|------------|------------|------------|------------|------------|----------|----------|
+| Recall@5   | 0.0426     | **0.0441** | 0.0196     | 0.0187     | 0.0345   | **0.0351**|
+| Recall@10  | 0.0645     | **0.0656** | 0.0289     | 0.0278     | 0.0499   | **0.0504**|
+| NDCG@5     | 0.0282     | **0.0289** | 0.0128     | 0.0123     | 0.0238   | **0.0240**|
+| NDCG@10    | 0.0353     | **0.0358** | 0.0158     | 0.0153     | 0.0287   | **0.0289**|
 ## 🤝 Acknowledgments
 
 - Built on [GRID](https://github.com/snap-research/GRID) by Snap Research
