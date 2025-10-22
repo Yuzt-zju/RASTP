@@ -39,7 +39,7 @@ pip install -r requirements.txt
 ```
 
 ## 🎯 Quick Start
-### 1. Data Preparation
+### 1. Data and Model Preparation
 
 Follow the [GRID](https://github.com/snap-research/GRID).
 
