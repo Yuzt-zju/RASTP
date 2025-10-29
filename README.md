@@ -45,7 +45,7 @@ Follow the [GRID](https://github.com/snap-research/GRID).
 
 ### 2. Replace key file
 
-To avoid interference from other implementations, our strategy is to directly modify the relevant file in the library. Therefore, after setting up the environment, replace the corresponding library file with the `modeling_t5.py` provided in our repository. For details, see the `class T5Stack` in this file—specifically, line 1324, where you can specify after which Transformer layer pruning should be applied (-1 means no rastp). 
+To avoid interference from other implementations, our strategy is to directly modify the relevant file in the library. Therefore, after setting up the environment, replace the corresponding library file `transformers.models.t5.modeling_t5`(you can find this file through line 10 of `src/models/modules/semantic_id/tiger_generation_model.py`) with the `modeling_t5.py` provided in our repository. For details, see the `class T5Stack` in this file—specifically, line 1324, where you can specify after which Transformer layer pruning should be applied (-1 means no rastp). 
 
 ### 2. Generate Semantic IDs (SIDs)
 
@@ -75,7 +75,7 @@ python -m src.inference experiment=rkmeans_inference_flat \
 
 ### 3. Train with RASTP
 
-Enable RASTP by specifying the pruning configuration in your training command:
+Enable RASTP by specifying line 1324 of the `modeling_t5.py` (-1 means no RASTP):
 
 ```bash
 # Train generative recommender with RASTP enabled

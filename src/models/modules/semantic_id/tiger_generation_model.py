@@ -477,8 +477,6 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         should_add_sep_token: bool = True,
         prediction_key_name: str = "user_id",
         prediction_value_name: str = "semantic_ids",
-        use_token_reduction: bool = False,
-        reduction_factor: float = 1.0 / 3.0,
         **kwargs,
     ) -> None:
         """
@@ -493,8 +491,6 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         mlp_layers (Optional[int]): the number of mlp layers in the encoder and decoder.
         embedding_dim (Optional[int]): the dimension of the embeddings.
         should_check_prefix (bool): whether to check if the prefix is valid.
-        use_token_reduction (bool): whether to use token reduction in the encoder (default: False).
-        reduction_factor (float): factor by which to reduce token count after each encoder layer (default: 1/3).
         """
 
         if num_hierarchies is None or num_embeddings_per_hierarchy is None:
@@ -520,16 +516,9 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
             **kwargs,
         )
 
-        # Initialize encoder with or without token reduction
-        if use_token_reduction:
-            self.encoder = SemanticIDEncoderModuleWithTokenReduction(
-                encoder=self.encoder,
-                reduction_factor=reduction_factor,
-            )
-        else:
-            self.encoder = SemanticIDEncoderModule(
-                encoder=self.encoder,
-            )
+        self.encoder = SemanticIDEncoderModule(
+            encoder=self.encoder,
+        )
 
         # bos_token used to prompt the decoder to generate the first token
         bos_token = torch.nn.Parameter(
@@ -591,50 +580,6 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
         # the key value names for the prediction output
         self.prediction_key_name = prediction_key_name
         self.prediction_value_name = prediction_value_name
-        self.training_step_count = 0
-        self.training_time = 0
-
-    def _reduce_tokens(self, embeddings: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Reduce the number of tokens by the reduction factor using adaptive pooling.
-        
-        Args:
-            embeddings: tensor of shape (batch_size, seq_len, hidden_dim)
-            attention_mask: tensor of shape (batch_size, seq_len)
-            
-        Returns:
-            tuple of (reduced_embeddings, reduced_attention_mask)
-        """
-        batch_size, seq_len, hidden_dim = embeddings.shape
-        
-        # Calculate new sequence length
-        new_seq_len = max(1, int(seq_len * self.reduction_factor))
-        
-        if new_seq_len >= seq_len:
-            # No reduction needed
-            return embeddings, attention_mask
-        
-        # Use adaptive max pooling to reduce sequence length
-        # Reshape to (batch_size, hidden_dim, seq_len) for 1D pooling
-        embeddings_reshaped = embeddings.transpose(1, 2)  # (batch_size, hidden_dim, seq_len)
-        
-        # Apply adaptive max pooling
-        pooled_embeddings = torch.nn.functional.adaptive_avg_pool1d(
-            embeddings_reshaped, 
-            output_size=new_seq_len
-        )
-        
-        # Reshape back to (batch_size, new_seq_len, hidden_dim)
-        reduced_embeddings = pooled_embeddings.transpose(1, 2)
-        
-        # Update attention mask - all tokens are valid after pooling
-        reduced_attention_mask = torch.nn.functional.adaptive_max_pool1d(
-        attention_mask.float().unsqueeze(1),  # [B, 1, L] ← 注意：增加通道维度
-        output_size=new_seq_len).squeeze(1).long()
-        
-        reduced_attention_mask = reduced_attention_mask.long()
-        
-        return reduced_embeddings, reduced_attention_mask
 
     def encoder_forward_pass(
         self,
@@ -812,7 +757,6 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
             input_ids=input_ids,
             user_id=user_id,
         )
-        # encoder_output, encoder_attention_mask = self._reduce_tokens(encoder_output,encoder_attention_mask)
 
         # initilize cached generated ids to None
         generated_ids = None
@@ -900,12 +844,12 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
             future_ids (Optional[torch.Tensor]): The future IDs for the decoder.
             attention_mask_decoder (Optional[torch.Tensor]): The attention mask for the decoder.
         """
-        # start_time = time.time()
+
         encoder_output, attention_mask_for_encoder = self.encoder_forward_pass(
             attention_mask=attention_mask_encoder,
             input_ids=input_ids,
             user_id=user_id,
-        ) #torch.Size([477, 150, 128])
+        )
 
         decoder_output = self.decoder_forward_pass(
             future_ids=future_ids,
@@ -914,13 +858,6 @@ class SemanticIDEncoderDecoder(SemanticIDGenerativeRecommender):
             attention_mask_for_encoder=attention_mask_for_encoder,
             use_cache=False,  # we are not using cache for training
         )
-        # end_time = time.time()
-        # self.training_time += end_time - start_time
-        # self.training_step_count += 1
-        # if self.training_step_count % 1600 == 0:
-        #     print(f"Training step {self.training_step_count} took {end_time - start_time} seconds")
-        #     print(f"Average training time per step: {self.training_time / self.training_step_count} seconds")
-        #     exit(1)
         return decoder_output
 
     def get_embedding_table(self, table_name: str, hierarchy: Optional[int] = None):
@@ -1135,149 +1072,6 @@ class SemanticIDEncoderModule(torch.nn.Module):
         )
         embeddings = encoder_output.last_hidden_state
         return embeddings
-
-
-class SemanticIDEncoderModuleWithTokenReduction(torch.nn.Module):
-    """
-    Modified encoder module that reduces token count to 1/3 after each transformer layer.
-    """
-
-    def __init__(
-        self,
-        encoder: transformers.PreTrainedModel,
-        reduction_factor: float = 1.0 / 3.0,
-    ) -> None:
-        """
-        Initialize the SemanticIDEncoderModuleWithTokenReduction module.
-
-        Parameters:
-        encoder (transformers.PreTrainedModel): the encoder model (e.g., transformers.T5EncoderModel).
-        reduction_factor (float): factor by which to reduce token count after each layer (default: 1/3).
-        """
-        super().__init__()
-
-        self.encoder = encoder
-        self.reduction_factor = reduction_factor
-        embedding_table_dim = find_module_shape(self.encoder, "embed_tokens")
-        num_embeddings, embedding_dim = embedding_table_dim
-
-        self.num_embeddings_per_hierarchy = num_embeddings
-        self.embedding_dim = embedding_dim
-
-        # deleting embedding table in the encoder to save space
-        delete_module(self.encoder, "embed_tokens")
-        delete_module(self.encoder, "shared")
-        reset_parameters(self.encoder)
-        
-        # We'll implement token reduction in our own forward method
-        # instead of replacing the encoder's forward method
-
-    def _reduce_tokens(self, embeddings: torch.Tensor, attention_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Reduce the number of tokens by the reduction factor using adaptive pooling.
-        
-        Args:
-            embeddings: tensor of shape (batch_size, seq_len, hidden_dim)
-            attention_mask: tensor of shape (batch_size, seq_len)
-            
-        Returns:
-            tuple of (reduced_embeddings, reduced_attention_mask)
-        """
-        batch_size, seq_len, hidden_dim = embeddings.shape
-        
-        # Calculate new sequence length
-        new_seq_len = max(1, int(seq_len * self.reduction_factor))
-        
-        if new_seq_len >= seq_len:
-            # No reduction needed
-            return embeddings, attention_mask
-        
-        # Use adaptive max pooling to reduce sequence length
-        # Reshape to (batch_size, hidden_dim, seq_len) for 1D pooling
-        embeddings_reshaped = embeddings.transpose(1, 2)  # (batch_size, hidden_dim, seq_len)
-        
-        # Apply adaptive max pooling
-        pooled_embeddings = torch.nn.functional.adaptive_avg_pool1d(
-            embeddings_reshaped, 
-            output_size=new_seq_len
-        )
-        
-        # Reshape back to (batch_size, new_seq_len, hidden_dim)
-        reduced_embeddings = pooled_embeddings.transpose(1, 2)
-        
-        # Update attention mask - all tokens are valid after pooling
-        reduced_attention_mask = torch.nn.functional.adaptive_max_pool1d(
-        attention_mask.float().unsqueeze(1),  # [B, 1, L] ← 注意：增加通道维度
-        output_size=new_seq_len).squeeze(1).long()
-        
-        reduced_attention_mask = reduced_attention_mask.long()
-        
-        return reduced_embeddings, reduced_attention_mask
-
-    def forward(
-        self,
-        attention_mask: torch.Tensor,
-        sequence_embedding: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Forward pass that applies token reduction after the first transformer layer.
-        """
-        # Prepare inputs
-        current_embeddings = sequence_embedding
-        current_attention_mask = attention_mask
-
-        # Prepare extended attention mask as T5 expects
-        # Shapes: attention_mask -> (batch, seq), extended -> (batch, 1, 1, seq)
-        input_shape = current_embeddings.size()[:-1]
-        extended_attention_mask = self.encoder.get_extended_attention_mask(
-            current_attention_mask, input_shape, current_embeddings.device
-        )
-        # cache_position similar to what HF creates internally
-        cache_position = torch.arange(0, input_shape[-1], device=current_embeddings.device)
-
-        blocks = self.encoder.encoder.block
-
-        current_embeddings = self.encoder.encoder.dropout(current_embeddings)
-        # Initialize position_bias (T5's relative position bias)
-        position_bias = None
-        for i, layer in enumerate(blocks):
-            # Call T5 block directly with minimal required kwargs
-            layer_outputs = layer(
-                hidden_states=current_embeddings,
-                attention_mask=extended_attention_mask,
-                position_bias=position_bias,  # ← 关键：传入上一层的 position_bias
-                encoder_hidden_states=None,
-                encoder_attention_mask=None,
-                use_cache=False,
-                output_attentions=False,
-                cache_position=cache_position,
-                return_dict=False,
-            )
-            current_embeddings = layer_outputs[0]
-            # Update position_bias for next layer (T5 reuses it)
-            position_bias = layer_outputs[2] if len(layer_outputs) > 2 else None
-            # After first layer, reduce tokens once, then continue
-            if i == 3 and len(blocks) > 1:
-                current_embeddings, current_attention_mask = self._reduce_tokens(
-                    current_embeddings, current_attention_mask
-                )
-                # Recompute shapes and masks
-                input_shape = current_embeddings.size()[:-1]
-                extended_attention_mask = self.encoder.get_extended_attention_mask(
-                    current_attention_mask, input_shape, current_embeddings.device
-                )
-                cache_position = torch.arange(0, input_shape[-1], device=current_embeddings.device)
-                
-                # ⚠️ 重要：序列长度改变，旧的 position_bias 无效，必须重置！
-                position_bias = None
-        
-        # Apply T5 stack's final layer norm and dropout to ensure all params are used
-        if hasattr(self.encoder, "encoder") and hasattr(self.encoder.encoder, "final_layer_norm"):
-            current_embeddings = self.encoder.encoder.final_layer_norm(current_embeddings)
-        if hasattr(self.encoder, "encoder") and hasattr(self.encoder.encoder, "dropout"):
-            current_embeddings = self.encoder.encoder.dropout(current_embeddings)
-
-        return current_embeddings
 
 
 # TODO (clark): this is a T5 specific implementation
